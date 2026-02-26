@@ -41,6 +41,17 @@ app.post('/addusers', async(req,res)=>{
     }
 })
 
+app.post('/addmultipleusers', async(req,res)=>{
+    try{
+       const users = await User.insertMany(req.body);
+       res.status(201).send(users);
+    }
+    catch (err){
+        res.status(400).send(err)
+    }
+})
+
+
 app.listen(3000, () => {
   console.log("server started on port 3000")
 });
