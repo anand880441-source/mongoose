@@ -10,46 +10,51 @@ app.use(express.json());
 
 //connect to mongo
 
-mongoose.connect("mongodb://localhost:27017/AuthClass")
-.then(()=>{console.log("MongoDB connected")})
-.catch((error)=>{console.log("MongoDB failed to connect",error)});
+mongoose
+  .connect("mongodb://localhost:27017/AuthClass")
+  .then(() => {
+    console.log("MongoDB connected");
+  })
+  .catch((error) => {
+    console.log("MongoDB failed to connect", error);
+  });
 
 //empty schema/blueprint
 
-const userSchema = new mongoose.Schema({
+const userSchema = new mongoose.Schema(
+  {
     name: String,
     email: String,
-    password: String
-},
-{versionKey:false}
-,
-{timestamps:true}
-
+    password: String,
+  },
+  { versionKey: false },
+  { timestamps: true },
 );
-
 
 //collection name
 
-const products = mongoose.model("users",userSchema);
+const products = mongoose.model("users", userSchema);
 
 //route
 
-app.get("/users", async (req, res) => {
-    try {
-        const data = await products.find({});
-        res.json(data);
-    }
-    catch (error) {
-        res.status(500).json({ message: error.message })
-    }
-});
+app.get("/",(req,res)=>{
+  res.status(200).json("Server is running...")
+})
 
+app.get("/users", async (req, res) => {
+  try {
+    const data = await products.find({});
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 app.post("/addusers", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    const hashedpassword = await bcrypt.hash(password, 10)
+    const hashedpassword = await bcrypt.hash(password, 10);
 
     // Check if user already exists
     const existingUser = await products.findOne({ email });
@@ -58,47 +63,56 @@ app.post("/addusers", async (req, res) => {
     }
 
     // Create new user
-    const newUser = new products({
-      name,
-      email,
-      password : hashedpassword
+    const userSchema = new mongoose.Schema({
+      name: {
+        type: String,
+        minlength: 2,
+        required: true,
+      },
+      email: {
+        type: String,
+        required: true,
+        lowercase: true,
+        unique: true,
+      },
+      password: {
+        type: String,
+        required: true,
+        minlength: [6, "password must be 6 charachters"],
+      },
     });
 
     await newUser.save();
 
     res.status(201).json({
       message: "User added successfully",
-      user: newUser
+      user: newUser,
     });
-
   } catch (err) {
     res.status(500).json({
       message: "Error adding user",
-      error: err.message
+      error: err.message,
     });
   }
 });
 
-
 app.post("/addmultipleusers", async (req, res) => {
   try {
-    const users = req.body; 
+    const users = req.body;
 
     const result = await products.insertMany(users);
 
     res.status(201).json({
       message: "Multiple users added successfully",
-      data: result
+      data: result,
     });
-
   } catch (err) {
     res.status(500).json({
       message: "Error inserting multiple users",
-      error: err.message
+      error: err.message,
     });
   }
 });
-
 
 app.listen(5000, () => {
   console.log("Server started on port 5000");
