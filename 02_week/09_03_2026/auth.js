@@ -1,18 +1,21 @@
 const express = require("express");
-const cors = require("cors");
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const app = express();
-app.use(cors());
+const PORT = 5000;
+const SECRET_KEY = "secretkey123"; 
+
 app.use(express.json());
 
+// --- Database Connection ---
 mongoose
   .connect("mongodb://localhost:27017/AuthClass")
   .then(() => console.log("MongoDB connected ✅"))
   .catch((err) => console.log("Failed to connect", err));
 
-// 1. Fixed Schema Definition
+// --- Schema & Model ---
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -24,201 +27,265 @@ const userSchema = new mongoose.Schema(
 
 const User = mongoose.model("User", userSchema);
 
-app.get("/",(req,res)=>{
-  res.status(200).json("Server is running...")
-})
+// --- Middleware: Protect Routes ---
+const protect = (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-app.get("/users", async (req, res) => {
-  try {
-    const data = await User.find({});
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      message: "No token provided. Please login first.",
+    });
   }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decoded = jwt.verify(token, SECRET_KEY);
+    req.user = decoded; // Contains userId and name
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token. Please login again.",
+    });
+  }
+};
+
+// --- Routes ---
+
+app.get("/", (req, res) => {
+  res.status(200).json("Server is running...");
 });
 
-// --- REGISTER ROUTE ---
+// Register
 app.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Check if user already exists
+    if (!name || !email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields required" });
+    }
+
     const existingUser = await User.findOne({ email });
-    if (existingUser)
-      return res.status(400).json({ message: "Email already registered" });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email already registered" });
+    }
 
-    // Hash the password before saving
     const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashedPassword });
 
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
+    res.status(201).json({
+      success: true,
+      message: "Account created successfully",
+      data: { id: user._id, name: user.name, email: user.email },
     });
-
-    await newUser.save();
-    res.status(201).json({ message: "User registered successfully!" });
-  } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Error registering user", error: err.message });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// --- LOGIN ROUTE ---
+// Login
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Find user by email
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
-    // 2. Compare entered password with hashed password in DB
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "Invalid password" });
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
+    if (!isPasswordCorrect) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Incorrect password" });
     }
 
-    // 3. Success (Return user info without the password)
-    res.status(200).json({
-      message: "Login successful!",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-      },
+    // Generate JWT
+    const token = jwt.sign({ userId: user._id, name: user.name }, SECRET_KEY, {
+      expiresIn: "1d",
     });
-  } catch (err) {
-    res.status(500).json({ message: "Login error", error: err.message });
+
+    res.status(200).json({ success: true, token });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-app.listen(5000, () => console.log("Server running on port 5000"));
+// Protected Profile Route
+app.get("/profile", protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select("-password")
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" })
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Here is your profile",
+      data: user,
+    })
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message })
+  }
+})
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT} 🚀`));
 
 
 
 
 
+// const express=require("express"); 
+// const mongoose=require("mongoose"); 
+// const bcrypt = require('bcrypt');
+// const jwt = require("jsonwebtoken")
+// const app=express()
 
-// const express = require("express");
-// const cors = require("cors");
-// const mongoose = require("mongoose");
-// const bcrypt = require("bcrypt");
+// app.use(express.json())
 
-// const app = express();
+// const PORT=3000 
 
-// app.use(cors());
-// app.use(express.json());
+// const SECRET_KEY = "mynameyogesh12345678j990"
 
-// //connect to mongo
-
-// mongoose
-//   .connect("mongodb://localhost:27017/AuthClass")
-//   .then(() => {
-//     console.log("MongoDB connected");
-//   })
-//   .catch((error) => {
-//     console.log("MongoDB failed to connect", error);
-//   });
-
-// //empty schema/blueprint
-
-// const userSchema = new mongoose.Schema(
-//   {
-//     name: String,
-//     email: String,
-//     password: String,
-//   },
-//   { versionKey: false },
-//   { timestamps: true },
-// );
-
-// //collection name
-
-// const products = mongoose.model("users", userSchema);
-
-// //route
-
-// app.get("/",(req,res)=>{
-//   res.status(200).json("Server is running...")
+// // Connect With Database 
+// mongoose.connect("mongodb://127.0.0.1:27017/Lab2AuthClass2")
+// .then(()=>{
+// console.log("MongoDB Connected Successfully")
+// })
+// .catch((err)=>{
+// console.log("Database connection error",err)
 // })
 
-// app.get("/users", async (req, res) => {
+// //  Step 1 . Create a Schema 
+// //  Step  2 . Create a Model 
+
+// const UserSchema = new mongoose.Schema({
+//  name:{
+//    type:String,
+//    required:true,
+//  },
+//  email:{
+//    type:String,
+//    required:true,
+//  },
+//  password:{
+//    type:String,
+//    required:true,
+//  }
+
+// })
+
+// //  Stept 
+// const User = mongoose.model("User",UserSchema)  // Model 
+
+
+
+
+
+// // Regitation 
+// // Login  
+
+
+// //  Regitation 
+// // Post 
+
+// app.post("/regiter",async(req,res)=>{
+//    const {name,email,password} =  req.body; 
+//    try {
+
+    
+ 
+//    // we are bcrypt for hash password 
+//      const hashpassword = await bcrypt.hash(password,8); 
+       
+//      const Myuser = {
+//          name,email,
+//          password:hashpassword
+//       }
+     
+//       const NewUser = new User(Myuser);
+
+//       await NewUser.save(); 
+
+//       res.status(201).json({msg:"User Regitation Done"})
+      
+      
+//    } catch (error) {
+//       res.status(401).send(error);
+//    }
+// })   //  Done 
+
+
+
+
+// // Login 
+// // Post
+
+// app.post("/login",async (req,res) => {
+//   const {email,password} = req.body; 
 //   try {
-//     const data = await products.find({});
-//     res.json(data);
-//   } catch (error) {
-//     res.status(500).json({ message: error.message });
-//   }
-// });
+  
+//     const user =  await User.findOne({email});    
 
-// app.post("/addusers", async (req, res) => {
-//   try {
-//     const { name, email, password } = req.body;
-
-//     const hashedpassword = await bcrypt.hash(password, 10);
-
-//     // Check if user already exists
-//     const existingUser = await products.findOne({ email });
-//     if (existingUser) {
-//       return res.status(400).json({ message: "User already exists" });
+    
+//     if(!user){
+//        return res.status(401).json({msg:"Please Register First !"})
 //     }
 
-//     // Create new user
-//     const userSchema = new mongoose.Schema({
-//       name: {
-//         type: String,
-//         minlength: 2,
-//         required: true,
-//       },
-//       email: {
-//         type: String,
-//         required: true,
-//         lowercase: true,
-//         unique: true,
-//       },
-//       password: {
-//         type: String,
-//         required: true,
-//         minlength: [6, "password must be 6 charachters"],
-//       },
-//     });
+//   const ismatch  =  await bcrypt.compare(password,user.password);    // true false 
 
-//     await newUser.save();
-
-//     res.status(201).json({
-//       message: "User added successfully",
-//       user: newUser,
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       message: "Error adding user",
-//       error: err.message,
-//     });
+//   if(!ismatch){
+//     return res.status(401).json({msg:"Your password wrong"})
 //   }
-// });
 
-// app.post("/addmultipleusers", async (req, res) => {
-//   try {
-//     const users = req.body;
+// const token  = jwt.sign(
+//   {
+//   userId:user._id,
+//   userName:user.name, 
+//  }, // paylod 
+//  SECRET_KEY , 
+//  {expiresIn:"1d"}
 
-//     const result = await products.insertMany(users);
-
-//     res.status(201).json({
-//       message: "Multiple users added successfully",
-//       data: result,
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       message: "Error inserting multiple users",
-//       error: err.message,
-//     });
+// )
+  
+//   if(ismatch){
+//     return res.status(201).json(
+//       {
+//          msg:"Login Done",
+//          Token:token
+         
+        
+    
+//     }
+//     )
 //   }
-// });
 
-// app.listen(5000, () => {
-//   console.log("Server started on port 5000");
-// });
+
+  
+//   } catch (error) {
+//     res.status(401).json(error)
+//   }
+// })
+
+
+
+
+// ///moddlwaare   
+
+
+
+
+
+// // Start Server 
+// app.listen(PORT,()=>{
+// console.log("Server running on port",PORT)
+// })
